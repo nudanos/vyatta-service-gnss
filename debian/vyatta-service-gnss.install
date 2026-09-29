@@ -1,4 +1,4 @@
-debian/vyatta-gnssd.service /lib/systemd/system
+debian/vyatta-gnssd.service /usr/lib/systemd/system
 sbin/vyatta-gnssd opt/vyatta/sbin
 sbin/vyatta-gnssd-vci opt/vyatta/sbin
 bin/vyatta-gnss-op opt/vyatta/bin

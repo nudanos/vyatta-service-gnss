@@ -1,3 +1,3 @@
 lib/vyatta//gnss-plugins/UbloxGNSS.py usr/lib/python3/dist-packages/vyatta/gnss-plugins
-platform/vyatta-service-gnss-ufi-s9500-30xs.platform lib/vyatta-platform/platforms
-debian/UbloxGNSS.conf /lib/systemd/system/vyatta-gnssd.service.d/
+platform/vyatta-service-gnss-ufi-s9500-30xs.platform usr/lib/vyatta-platform/platforms
+debian/UbloxGNSS.conf /usr/lib/systemd/system/vyatta-gnssd.service.d/
