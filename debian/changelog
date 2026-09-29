@@ -1,3 +1,9 @@
+vyatta-service-gnss (1.14) trixie; urgency=medium
+
+  * Port to Debian 13 (trixie): debhelper-compat 13, Standards-Version 4.7.2, Rules-Requires-Root, NuDanOS Vcs.
+
+ -- NuDanOS Maintainers <jon@fernandez.tech>  Mon, 28 Sep 2026 23:09:16 -0700
+
 vyatta-service-gnss (1.13) unstable; urgency=medium
 
   * Fix vci emulation for unit tests (Bugfix: VRVDR-56608)

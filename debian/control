@@ -1,17 +1,19 @@
 Source: vyatta-service-gnss
-Section: contrib/net
+Section: net
 Priority: optional
-Maintainer: Vyatta Package Maintainers <DL-vyatta-help@att.com>
-Build-Depends: daemon,
-               debhelper (>= 9),
-               debhelper (>= 9.20160709) | dh-systemd,
-               dh-python,
-               dh-vci,
-               dh-yang,
-               python3,
-               python3-systemd,
-               python3-zmq,
-Standards-Version: 3.9.8
+Maintainer: NuDanOS Maintainers <jon@fernandez.tech>
+Build-Depends: debhelper-compat (= 13),
+ daemon,
+ dh-python,
+ dh-vci,
+ dh-yang,
+ python3,
+ python3-systemd,
+ python3-zmq
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Vcs-Git: https://github.com/nudanos/vyatta-service-gnss.git
+Vcs-Browser: https://github.com/nudanos/vyatta-service-gnss
 
 Package: vyatta-service-gnss
 Architecture: all
