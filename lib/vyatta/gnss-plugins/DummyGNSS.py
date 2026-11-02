@@ -15,7 +15,8 @@ import random
 from vyatta.gnss import GNSS
 
 
-class DummyGNSS(object):
+# pylint: disable-next=too-few-public-methods ; reason: plugin registration
+class DummyGNSS:
     def __init__(self):
         pass
 

@@ -19,7 +19,10 @@ class TestGNSS(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        subprocess.Popen(['sbin/vyatta-gnssd'], env={'PYTHONPATH': './lib'})
+        # the daemon runs for the whole class; tearDownClass stops it
+        # pylint: disable-next=consider-using-with ; reason: see above
+        cls.daemon = subprocess.Popen(['sbin/vyatta-gnssd'],
+                                      env={'PYTHONPATH': './lib'})
         time.sleep(1)
 
     def test_get_state(self):
@@ -28,23 +31,25 @@ class TestGNSS(unittest.TestCase):
         self.assertNotEqual(output, '')
 
     def test_do_stop(self):
+        # check_output raises on failure
         subprocess.check_output(['bin/vyatta-gnss-util', '--stop-gnss'])
-        self.assertTrue(True, 'subprocess will raise an exception on failure')
 
     def test_do_start(self):
+        # check_output raises on failure
         subprocess.check_output(['bin/vyatta-gnss-util', '--start-gnss'])
-        self.assertTrue(True, 'subprocess will raise an exception on failure')
 
     @classmethod
     def tearDownClass(cls):
         subprocess.check_output(['bin/vyatta-gnss-util', '--shutdown'])
+        cls.daemon.wait(timeout=10)
 
 
 class TestOpmode(unittest.TestCase):
 
     def test_do_show(self):
         output = subprocess.check_output(
-            ['bin/vyatta-gnss-op', '--action=show'], env={'PYTHONPATH': './lib'})
+            ['bin/vyatta-gnss-op', '--action=show'],
+            env={'PYTHONPATH': './lib'})
         self.assertNotEqual(output, '')
 
 

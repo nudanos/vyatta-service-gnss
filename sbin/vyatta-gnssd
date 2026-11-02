@@ -18,8 +18,6 @@ import systemd.daemon
 import vci
 import zmq
 
-from vyatta import configd
-
 
 class VyattaGnssDaemon:
     """
@@ -103,8 +101,10 @@ class VyattaGnssDaemon:
                 device = driver()
                 if device:
                     device.probe(self.register)
-            except:
-                print('Failed to load', class_name)
+            # a failing plugin must not stop the daemon
+            # pylint: disable-next=broad-exception-caught ; reason: see above
+            except Exception as exc:
+                print('Failed to load', class_name, exc)
 
     def get_rep_fd(self):
         """
@@ -216,7 +216,7 @@ class VyattaGnssDaemon:
                 if fd == self.get_rep_fd():
                     self.handle_rep_fd_event()
                 else:
-                    raise Exception("Unexpected event on fd {}".format(fd))
+                    raise RuntimeError(f"Unexpected event on fd {fd}")
             if not events:
                 self.update_configurations()
                 self.do_update_hardware_status()
@@ -234,7 +234,8 @@ class VyattaGnssDaemon:
         try:
             if self.client is None:
                 self.client = vci.Client()
-            state = self.client.state_by_model('net.vyatta.vci.service.gnss.v1')
+            state = self.client.state_by_model(
+                'net.vyatta.vci.service.gnss.v1')
             configs = state[SERVICE][SERVICE_GNSS]['instance']
         except vci.Exception:
             self.client = None

@@ -7,4 +7,4 @@
 	dh $@ --with yang --with python3,vci
 
 override_dh_auto_test:
-	python3 -m unittest unittests
+	python3 -m unittest unittests test_ublox

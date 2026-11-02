@@ -53,7 +53,8 @@ def main(parser, args):
     try:
         req_socket.connect(REP_ENDPOINT)
     except Exception as e:
-        raise FailedToConnectToDaemon(f'Connection to gnssd failed: {e}')
+        raise FailedToConnectToDaemon(
+            f'Connection to gnssd failed: {e}') from e
 
     req_socket.send_json(req_json)
     reply = req_socket.recv_json()

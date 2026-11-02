@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 
 
 class GNSS(ABC):
+    _instance = None
+
     @abstractmethod
     def update_hardware_status(self):
         """
@@ -52,6 +54,7 @@ class GNSS(ABC):
         """
         return True
 
+    # pylint: disable-next=unused-argument ; reason: the plugin interface
     def set_antenna_delay(self, delay):
         """
         Set the antenna propagation delay in nanoseconds for the GNSS device.

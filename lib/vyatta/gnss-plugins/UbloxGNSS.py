@@ -9,6 +9,8 @@
 Support for the ublox GNSS device in the S9500 30XS platform.
 """
 
+# pylint: disable=protected-access ; reason: GPSUSB's UBX I/O is _gps_get/set
+
 from enum import Enum, unique
 
 import argparse
@@ -24,6 +26,7 @@ import usb.util
 import vci
 
 from vyatta.gnss import GNSS
+# pylint: disable-next=no-name-in-module ; reason: from vyatta-platform
 from vyatta.platform.detect import PlatformError, detect
 
 import timing_utility
@@ -35,6 +38,7 @@ from protocol.lpc import LPCDevType
 from timing.gpsusb import GPSUSB
 
 
+# pylint: disable-next=too-few-public-methods ; reason: plugin registration
 class UbloxGNSS:
     """
     A helper class that registers the class that implements GNSS plugin.
@@ -196,23 +200,23 @@ def dpll_get_timing_state():
     return timing_state
 
 
-def u4(bytes):
+def u4(data):
     """
     Convert a little endian Ublox U4 type to a native integer
     """
-    if len(bytes) != 4:
+    if len(data) != 4:
         raise ValueError('Need exactly 4 bytes')
-    return int(bytes[0]) + \
-        int(bytes[1]) * 256 + \
-        int(bytes[2]) * 65536 + \
-        int(bytes[3]) * 16777216
+    return int(data[0]) + \
+        int(data[1]) * 256 + \
+        int(data[2]) * 65536 + \
+        int(data[3]) * 16777216
 
 
-def i4(bytes):
+def i4(data):
     """
     Convert a little endian Ublox I4 type to a native integer
     """
-    value = u4(bytes)
+    value = u4(data)
     if value > 0x7fffffff:
         value = value - 0x100000000
     return value
@@ -227,7 +231,7 @@ def checksum(command):
     for b in command[2:]:
         ck_a += b
         ck_b += ck_a
-    return [ ck_a % 256, ck_b % 256  ]
+    return [ck_a % 256, ck_b % 256]
 
 
 def platform_delay():
@@ -257,7 +261,7 @@ def ubx_cfg_tp5(usb_dev, delay):
                             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
                             0x00, 0x00, 0x80, 0x96, 0x98, 0x00, 0x00, 0x00,
                             0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00,
-                            0x00, 0x00, 0xEF, 0x00, 0x00, 0x00 ])
+                            0x00, 0x00, 0xEF, 0x00, 0x00, 0x00])
 
     delay += platform_delay()
 
@@ -271,6 +275,7 @@ def ubx_cfg_tp5(usb_dev, delay):
     usb_dev._gps_set(cmd)
 
 
+# pylint: disable-next=too-many-instance-attributes ; reason: device state
 class _UbloxGNSS(GNSS):
     """
     ublox GNSS device support for the S9500 30XS platform.
@@ -284,6 +289,7 @@ class _UbloxGNSS(GNSS):
         self.satellites = []
         self.enabled = True
         self.in_holdover = False
+        self.holdover_start = None
         self.gnss_led = LedState.UNKNOWN
         self.sync_led = LedState.UNKNOWN
         self.antenna_status = None
@@ -404,7 +410,7 @@ class _UbloxGNSS(GNSS):
                 break
             except usb.USBError:
                 pass
-            except ValueError as e:
+            except ValueError:
                 pass
 
         self.enabled = False
@@ -439,7 +445,7 @@ class _UbloxGNSS(GNSS):
         elif ten_mhz:
             tracking_status = 'acquiring'
 
-        if (one_pps or ten_mhz) and antenna_status is 'open':
+        if (one_pps or ten_mhz) and antenna_status == 'open':
             antenna_status = 'OK'
 
         status = {'instance-number': self.get_instance(),
@@ -462,7 +468,7 @@ class _UbloxGNSS(GNSS):
             if self.longitude:
                 status['longitude'] = str(self.longitude)
 
-            if len(self.satellites):
+            if self.satellites:
                 status['satellites-in-view'] = self.satellites
 
             if self.survey_status:
@@ -535,24 +541,18 @@ class _UbloxGNSS(GNSS):
         gnssFixOK = int(response[27]) & 0x1
 
         if gnssFixOK:
-            self.latitude = longitude
-            self.longitude = latitude
+            self.latitude = latitude
+            self.longitude = longitude
 
+        # year (U2), month, day, hour, min, sec, valid flags
         year = response[10] + response[11] * 256
-        month = int(response[12])
-        day = int(response[13])
-        hour = int(response[14])
-        mins = int(response[15])
-        secs = int(response[16])
+        month, day, hour, mins, secs, valid = (int(b) for b in response[12:18])
 
-        validDate = int(response[17]) & 0x1
-        validTime = int(response[17]) & 0x2
-
-        if validDate and validTime:
+        if valid & 0x1 and valid & 0x2:    # validDate and validTime
             utc = datetime.datetime(year, month, day,
-                                    hour=hour, minute=mins, second=secs)
+                                    hour=hour, minute=mins, second=secs,
+                                    tzinfo=datetime.timezone.utc)
             self.gpstime = int(utc.timestamp())
-            return
 
     def fetch_svin(self, usb_dev):
         """
@@ -602,126 +602,86 @@ class _UbloxGNSS(GNSS):
         """
         Update the GPS and SYNC status LEDs.
         """
-        def update_led(led, state):
-            """
-            Set the given LED to the specific state
-            """
-            state_table = {
-                LedState.OFF:
-                    (Led.STATUS_OFF,
-                     Led.COLOR_GREEN,
-                     Led.BLINK_STATUS_SOLID),
-                LedState.GREEN:
-                    (Led.STATUS_ON,
-                     Led.COLOR_GREEN,
-                     Led.BLINK_STATUS_SOLID),
-                LedState.BLINKING_GREEN:
-                    (Led.STATUS_ON,
-                     Led.COLOR_GREEN,
-                     Led.BLINK_STATUS_BLINKING),
-                LedState.YELLOW:
-                    (Led.STATUS_ON,
-                     Led.COLOR_YELLOW,
-                     Led.BLINK_STATUS_SOLID),
-                LedState.BLINKING_YELLOW:
-                    (Led.STATUS_ON,
-                     Led.COLOR_YELLOW,
-                     Led.BLINK_STATUS_BLINKING),
-            }
-
-            on_off, color, blink = state_table[state]
-
-            cpld_util = CPLDUtility()
-            cpld_util.set_led_control(led, on_off, color, blink)
-
         is_shorted, is_open = gnss_antenna_state()
 
-        # open=1, shorted=1                         => unconnected
-        #
-        # open=0, shorted=0                         => malfunction
-        #
-        # open=0, shorted=1,
-        # dpll_state = holdover|phase-lost|free-run => no-signal
-        #
-        # open=0, shorted=1,
-        # dpll_state = pre-locked1|pre-locked2      => acquiring
-        #
-        # open=0, shorted=1,
-        # dpll_state = pre-locked1|pre-locked2      => locked
-
-        if not self.enabled:
-            state = LedState.OFF
-        elif is_open == 0 and is_shorted == 0:
-            state = LedState.BLINKING_YELLOW
-        elif is_open == 0 and is_shorted == 1:
-            (one_pps, ten_mhz) = gnss_dpll_state()
-
-            if one_pps and ten_mhz:
-                state = LedState.GREEN
-            elif ten_mhz:
-                state = LedState.BLINKING_GREEN
-            else:
-                state = LedState.YELLOW
-        elif is_open == 1 and is_shorted == 1:
-            (one_pps, ten_mhz) = gnss_dpll_state()
-
-            if one_pps and ten_mhz:
-                state = LedState.GREEN
-            elif ten_mhz:
-                state = LedState.BLINKING_GREEN   # frequency input
-            else:
-                state = LedState.OFF
-        else:
-            state = LedState.OFF
-
+        state = self.gps_led_state(is_shorted, is_open)
         if self.gnss_led != state:
             update_led(Led.GPS, state)
             self.gnss_led = state
 
-        # This platform has a stratum 3e clock. It is precise
-        # enough to maintain end-to-end PTP timing for at least
-        # 2 hours.
-        IN_SPEC_HOLDOVER_TIME = 7200    # seconds
-
-        timing_state = dpll_get_timing_state()
-        if timing_state == TimingState.PHASE_LOCKED:
-            state = LedState.GREEN
-            self.in_holdover = False
-        elif timing_state == TimingState.FREQUENCY_LOCKED:
-            state = LedState.BLINKING_GREEN
-            self.in_holdover = False
-        elif timing_state == TimingState.HOLDOVER:
-            # If we have been in holdover too long, then we
-            # should blink to indicate that we have exceeded
-            # the holdover specification.
-            if not self.in_holdover:
-                self.in_holdover = True
-                self.holdover_start = time.time()
-
-            holdover_time = time.time() - self.holdover_start
-            if holdover_time > IN_SPEC_HOLDOVER_TIME:
-                state = LedState.BLINKING_YELLOW
-            else:
-                state = LedState.YELLOW
-        else:
-            state = LedState.OFF
-            self.in_holdover = False
-
+        state = self.sync_led_state()
         if self.sync_led != state:
             update_led(Led.SYNC, state)
             self.sync_led = state
 
-        # Log antenna status update if necessary
-        antenna_status = gnss_antenna_status(is_shorted, is_open)
-        if antenna_status is 'open':
+        self.log_antenna_status(gnss_antenna_status(is_shorted, is_open))
+
+    def gps_led_state(self, is_shorted, is_open):
+        """
+        The GPS LED state for the antenna and DPLL state:
+
+        open=1, shorted=1                         => unconnected
+        open=0, shorted=0                         => malfunction
+        open=0, shorted=1,
+        dpll_state = holdover|phase-lost|free-run => no-signal
+        open=0, shorted=1,
+        dpll_state = pre-locked1|pre-locked2      => acquiring
+        open=0, shorted=1,
+        dpll_state = pre-locked1|pre-locked2      => locked
+        """
+        if not self.enabled:
+            return LedState.OFF
+        if is_open == 0 and is_shorted == 0:
+            return LedState.BLINKING_YELLOW
+        if is_shorted != 1:
+            return LedState.OFF
+
+        (one_pps, ten_mhz) = gnss_dpll_state()
+        if one_pps and ten_mhz:
+            return LedState.GREEN
+        if ten_mhz:
+            return LedState.BLINKING_GREEN   # frequency input
+        return LedState.YELLOW if is_open == 0 else LedState.OFF
+
+    def sync_led_state(self):
+        """
+        The SYNC LED state for the timing state. This platform has a
+        stratum 3e clock: precise enough to keep end-to-end PTP timing in
+        holdover for at least 2 hours, after which the LED blinks.
+        """
+        in_spec_holdover_time = 7200    # seconds
+
+        timing_state = dpll_get_timing_state()
+        if timing_state != TimingState.HOLDOVER:
+            self.in_holdover = False
+        if timing_state == TimingState.PHASE_LOCKED:
+            return LedState.GREEN
+        if timing_state == TimingState.FREQUENCY_LOCKED:
+            return LedState.BLINKING_GREEN
+        if timing_state != TimingState.HOLDOVER:
+            return LedState.OFF
+
+        if not self.in_holdover:
+            self.in_holdover = True
+            self.holdover_start = time.time()
+        if time.time() - self.holdover_start > in_spec_holdover_time:
+            return LedState.BLINKING_YELLOW
+        return LedState.YELLOW
+
+    def log_antenna_status(self, antenna_status):
+        """
+        Log and notify an antenna status change.
+        """
+        if antenna_status == 'open':
             (one_pps, ten_mhz) = gnss_dpll_state()
-            if (one_pps or ten_mhz):
+            if one_pps or ten_mhz:
                 antenna_status = 'OK'
 
         if antenna_status != self.antenna_status:
             instance_number = self.get_instance()
             syslog.syslog(syslog.LOG_WARNING,
-                          f'GNSS {instance_number}: antenna status has changed to {antenna_status}')
+                          f'GNSS {instance_number}: antenna status has '
+                          f'changed to {antenna_status}')
             client = vci.Client()
             notification = {
                 'antenna-status': antenna_status,
@@ -730,6 +690,29 @@ class _UbloxGNSS(GNSS):
             client.emit('vyatta-service-gnss-v1',
                         'antenna-status-update', notification)
             self.antenna_status = antenna_status
+
+
+def update_led(led, state):
+    """
+    Set the given LED to the specific state
+    """
+    state_table = {
+        LedState.OFF:
+            (Led.STATUS_OFF, Led.COLOR_GREEN, Led.BLINK_STATUS_SOLID),
+        LedState.GREEN:
+            (Led.STATUS_ON, Led.COLOR_GREEN, Led.BLINK_STATUS_SOLID),
+        LedState.BLINKING_GREEN:
+            (Led.STATUS_ON, Led.COLOR_GREEN, Led.BLINK_STATUS_BLINKING),
+        LedState.YELLOW:
+            (Led.STATUS_ON, Led.COLOR_YELLOW, Led.BLINK_STATUS_SOLID),
+        LedState.BLINKING_YELLOW:
+            (Led.STATUS_ON, Led.COLOR_YELLOW, Led.BLINK_STATUS_BLINKING),
+    }
+
+    on_off, color, blink = state_table[state]
+
+    cpld_util = CPLDUtility()
+    cpld_util.set_led_control(led, on_off, color, blink)
 
 
 if __name__ == "__main__":

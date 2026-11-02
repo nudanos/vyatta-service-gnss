@@ -7,14 +7,18 @@
 A simple emulation for unit testing
 """
 
+# pylint: disable=duplicate-code ; reason: answers with DummyGNSS's state
+
 import time
 
 
+# pylint: disable-next=redefined-builtin ; reason: configd's name for it
 class Exception(Exception):
     def __init__(self):
         pass
 
 
+# pylint: disable-next=too-few-public-methods ; reason: the op script's call
 class Client:
     def __init__(self):
         pass

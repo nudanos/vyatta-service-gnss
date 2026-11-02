@@ -12,14 +12,17 @@ import vci
 
 CONFIG_CACHE = '/run/vyatta/vyatta-gnssd.conf'
 
-current_config = dict()
+# the configuration last set, shared by Config and State
+current_config = {}
 
 
 class Config(vci.Config):
+    """The service gnss configuration, cached for vyatta-gnssd."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
-            with open(CONFIG_CACHE, 'r') as configcache:
+            with open(CONFIG_CACHE, 'r', encoding='utf-8') as configcache:
                 config = json.load(configcache)
                 self.set(config)
         except FileNotFoundError:
@@ -28,37 +31,42 @@ class Config(vci.Config):
             pass
 
     def set(self, config):
-        global current_config
-        current_config = config
+        """Store a new configuration and tell vyatta-gnssd."""
+        current_config.clear()
+        current_config.update(config)
         try:
-            with open(CONFIG_CACHE, 'w') as configcache:
+            with open(CONFIG_CACHE, 'w', encoding='utf-8') as configcache:
                 json.dump(config, configcache)
         except FileNotFoundError:
             pass
         except PermissionError:
             pass
         # Tell vyatta-gnssd to apply the new configuration
-        subprocess.run(['/usr/bin/killall', '-USR1', 'vyatta-gnssd'])
+        subprocess.run(['/usr/bin/killall', '-USR1', 'vyatta-gnssd'],
+                       check=False)
 
+    # pylint: disable-next=unused-argument ; reason: the vci.Config interface
     def check(self, config):
+        """Any configuration is accepted."""
         return
 
     def get(self):
-        global current_config
+        """The current configuration."""
         return current_config
 
 
+# pylint: disable-next=too-few-public-methods ; reason: vci.State's get()
 class State(vci.State):
+    """The service gnss state: its configuration."""
+
     def get(self):
-        global current_config
+        """The current configuration."""
         return current_config
 
 
 def gnss_supported():
-    if os.path.exists('/run/vyatta/platform/ufi.s9500-30xs'):
-        return True
-
-    return False
+    """GNSS hardware is on the S9500-30XS only."""
+    return os.path.exists('/run/vyatta/platform/ufi.s9500-30xs')
 
 
 if __name__ == "__main__":

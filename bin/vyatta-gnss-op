@@ -12,10 +12,12 @@ Interface for the YANG "operational" CLI.
 import datetime
 import sys
 
+from argparse import ArgumentParser
 from logging import getLogger
-from optparse import OptionParser
 
 from vyatta import configd
+
+LOGGER = getLogger()
 
 
 def show_satellites(satellites):
@@ -34,35 +36,41 @@ def show_satellites(satellites):
             print(f'\t\t{prn:>3}  {elevation:>9}  {azimuth:>7}  {snr:>3}')
 
 
+def utc_time(timestamp):
+    """A POSIX timestamp as UTC date and time."""
+    utc = datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
+    return utc.replace(tzinfo=None)
+
+
+# instance leaves shown as "<name>: <value> <unit>", in order
+INSTANCE_FIELDS = [
+    ('antenna-delay', lambda v: (v, 'ns')),
+    ('tracking-status', lambda v: (v,)),
+    ('system', lambda v: (v,)),
+    ('time', lambda v: (utc_time(v), 'UTC')),
+    ('latitude', lambda v: (v, 'degrees')),
+    ('longitude', lambda v: (v, 'degrees')),
+    ('survey-status', lambda v: (v,)),
+    ('survey-observations', lambda v: (v,)),
+    ('survey-precision', lambda v: (v / 1000.0, 'meters')),
+]
+
+
 def show_instance(instance):
     """
     Show the status of a GNSS instance.
     """
-    print('GNSS {}:'.format(instance['instance-number']))
+    print(f"GNSS {instance['instance-number']}:")
     if 'enabled' in instance and not instance['enabled']:
         print('\t[DISABLED]')
     if 'antenna-status' in instance:
         antenna_status = instance['antenna-status']
-        print('\tantenna-status:', "open (or passive antenna)" if antenna_status == 'open' else antenna_status)
-    if 'antenna-delay' in instance:
-        antenna_delay = instance['antenna-delay']
-        print('\tantenna-delay:', antenna_delay, 'ns')
-    if 'tracking-status' in instance:
-        print('\ttracking-status:', instance['tracking-status'])
-    if 'system' in instance:
-        print('\tsystem:', instance['system'])
-    if 'time' in instance:
-        print('\ttime: {} UTC'.format(datetime.datetime.fromtimestamp(instance['time'])))
-    if 'latitude' in instance:
-        print('\tlatitude:', instance['latitude'], 'degrees')
-    if 'longitude' in instance:
-        print('\tlongitude:', instance['longitude'], 'degrees')
-    if 'survey-status' in instance:
-        print('\tsurvey-status:', instance['survey-status'])
-    if 'survey-observations' in instance:
-        print('\tsurvey-observations:', instance['survey-observations'])
-    if 'survey-precision' in instance:
-        print('\tsurvey-precision:', instance['survey-precision'] / 1000.0, 'meters')
+        if antenna_status == 'open':
+            antenna_status = 'open (or passive antenna)'
+        print('\tantenna-status:', antenna_status)
+    for name, show_value in INSTANCE_FIELDS:
+        if name in instance:
+            print(f'\t{name}:', *show_value(instance[name]))
     if 'satellites-in-view' in instance:
         show_satellites(instance['satellites-in-view'])
 
@@ -74,7 +82,7 @@ def show(client):
     try:
         tree = client.tree_get_full_dict('service gnss state')
     except configd.Exception as e:
-        logger.error(f'Retrieving state from configd failed: {e}')
+        LOGGER.error('Retrieving state from configd failed: %s', e)
         sys.exit(1)
     if 'instance-list' in tree['state']:
         for instance in tree['state']['instance-list']:
@@ -99,12 +107,10 @@ def stop(client):
 
 
 if __name__ == "__main__":
-    logger = getLogger()
+    parser = ArgumentParser()
+    parser.add_argument("-a", "--action", help="show|start|stop")
 
-    parser = OptionParser()
-    parser.add_option("-a", "--action", help="show|start|stop")
-
-    (options, args) = parser.parse_args()
+    (options, _) = parser.parse_known_args()
 
     if options.action is None:
         parser.print_usage()
